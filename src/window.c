@@ -56,10 +56,7 @@ void new_window(ApplicationData *app_data) {
     win_data->first_subrow = 0;
     win_data->first_cycle = 0;
 
-    win_data->tables_array = malloc(sizeof(InstructionTableArray));
-    win_data->tables_array->qtty_tables = 0;
-    win_data->tables_array->avail_tables = 0;
-    win_data->tables_array->tables = NULL;
+    win_data->trace = NULL;
 
     win_data->last_search.pattern = NULL;
     win_data->last_search.data_kind = PC;
@@ -74,11 +71,8 @@ void new_window(ApplicationData *app_data) {
 }
 
 void close_window(WindowData *win_data) {
-    if (win_data->tables_array != NULL) {
-        free_InstructionTableArray(win_data->tables_array);
-        free(win_data->tables_array);
-        win_data->tables_array = NULL;
-    }
+    trace_close(win_data->trace);
+    win_data->trace = NULL;
 
     if (win_data->win != NULL) {
         delwin(win_data->win);
@@ -352,47 +346,24 @@ void print_instruction(ApplicationData *app_data, WindowData *win_data, Configur
     print_instruction_rows(app_data, win_data, config, inst, y, *first_cycle, index, 0, rows);
 }
 
+// The trace loads the chunk holding index on demand. Pointers stay valid
+// until the next trace_trim(), which only happens between frames and steps.
 static Instruction *instruction_at(WindowData *win_data, uint64_t index) {
-    InstructionTableArray *tables = win_data->tables_array;
-    if (tables == NULL || tables->tables == NULL ||
-        index/256 >= tables->qtty_tables || tables->tables[index/256] == NULL)
-        return NULL;
-    return &tables->tables[index/256]->content[index%256];
-}
-
-static bool row_has_stages(WindowData *win_data, uint64_t index) {
-    Instruction *inst = instruction_at(win_data, index);
-    return inst != NULL && inst->valid && inst->stages != NULL && inst->qtty_stages > 0;
+    if (win_data->trace == NULL) return NULL;
+    return trace_get_instruction(win_data->trace, index);
 }
 
 // Search actual instruction IDs, retaining those IDs for labels and searches.
-// Skip absent table ranges in one step rather than scanning every empty slot.
+// The trace skips chunks without instructions without parsing them.
 static bool visible_instruction(WindowData *win_data, uint64_t *index, bool forward) {
-    InstructionTableArray *tables = win_data->tables_array;
-    if (tables == NULL || tables->tables == NULL || tables->qtty_tables == 0)
-        return false;
-    uint64_t limit = tables->qtty_tables * 256;
-    if (*index >= limit) {
-        if (forward) return false;
-        *index = limit - 1;
-    }
-    for (;;) {
-        if (row_has_stages(win_data, *index)) return true;
-        if (tables->tables[*index/256] == NULL) {
-            if (forward) {
-                *index = (*index/256 + 1) * 256;
-                if (*index >= limit) return false;
-            } else {
-                if (*index/256 == 0) return false;
-                *index = (*index/256) * 256 - 1;
-            }
-        } else if (forward) {
-            if (++*index >= limit) return false;
-        } else {
-            if (*index == 0) return false;
-            --*index;
-        }
-    }
+    if (win_data->trace == NULL) return false;
+    return trace_seek_instruction(win_data->trace, index, forward);
+}
+
+// Long jumps (e.g. 100000j) walk many chunks in one keypress. Trimming after
+// each step keeps the cache bounded; no instruction pointer is held here.
+static void trim_trace(WindowData *win_data, uint64_t focus) {
+    if (win_data->trace != NULL) trace_trim(win_data->trace, focus);
 }
 
 void move_visible_instruction(WindowData *win_data, bool forward, uint64_t count) {
@@ -412,12 +383,14 @@ void move_visible_instruction(WindowData *win_data, bool forward, uint64_t count
         }
         if (!visible_instruction(win_data, &next, forward)) break;
         win_data->first_instruction = next;
+        trim_trace(win_data, next);
     }
 }
 
 void scroll_instruction_rows(WindowData *win_data, bool forward, uint64_t count,
                              bool show_empty_rows) {
     while (count-- > 0) {
+        trim_trace(win_data, win_data->first_instruction);
         uint64_t height = instruction_height(instruction_at(win_data, win_data->first_instruction));
         if (forward && win_data->first_subrow + 1 < height) {
             ++win_data->first_subrow;
@@ -449,7 +422,11 @@ void render_window(ApplicationData *app_data, WindowData *win_data) {
     uint64_t previous_first_cycle = win_data->first_cycle;
     win_data->first_cycle = UINT64_MAX;
 
-    if (win_data->tables_array != NULL && win_data->height > 2) {
+    // New frame: chunks far from the view may be freed now, before any
+    // instruction pointer of this frame is taken.
+    trim_trace(win_data, win_data->first_instruction);
+
+    if (win_data->trace != NULL && win_data->height > 2) {
         uint64_t reserved = shown_timelines + (shown_timelines != 0 ? 1 : 0);
         uint64_t budget = win_data->height-2;
         budget = reserved < budget ? budget-reserved : 0;

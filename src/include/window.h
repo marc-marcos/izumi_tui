@@ -27,6 +27,7 @@
 #include "error.h"
 
 #include <izumi/data_structs.h>
+#include <izumi/trace.h>
 
 struct ColorData_s {
     short fg;
@@ -105,7 +106,7 @@ struct WindowData_s {
     WINDOW *win;
     uint64_t index;
 
-    InstructionTableArray *tables_array;
+    Trace *trace; // Lazily loaded; NULL until a file is opened.
 
     uint64_t first_instruction;
     uint64_t first_subrow; // Vertical offset inside a tall multi-lane instruction.

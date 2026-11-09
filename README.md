@@ -16,6 +16,10 @@ Izumi is a multi-format instruction pipeline dump TUI visualizer based on [shioy
 - Line on left
 - End of stage (for multiple cycle stages/stalling the pipeline)
 - End of instruction
+- Traces of any size: files open instantly and are loaded lazily in chunks
+  around the view, so memory stays around 150 MB no matter how long the trace
+  is. Jumping far ahead the first time indexes the file up to that point
+  (about 1 s per GB).
 
 ## Requirements
 
@@ -180,7 +184,7 @@ area.
 
 ### Attaching other traces
 
-`:attach <path>` parses another Kanata trace and merges its lanes into the
+`:attach <path>` opens another Kanata trace (also lazily) and merges its lanes into the
 focused panel, matching instructions by ID. This is how CVFPU traces can be
 viewed alongside the core trace from the same run: open the core trace, then
 attach each CVFPU log. Stage cycles keep their original values, so both traces

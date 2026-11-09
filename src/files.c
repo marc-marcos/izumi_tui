@@ -15,7 +15,7 @@
  * Izumi. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <izumi/parser.h>
+#include <izumi/trace.h>
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -52,63 +52,20 @@ char *file_basename(const char *path) {
     return filename;
 }
 
-char *read_file(const char * path, InstructionTableArray *tables_array) {
+char *read_file(const char * path, Trace **trace) {
     FileData file_data = check_file(path);
 
-    if (file_data.exists && file_data.is_file) {
-        free_InstructionTableArray(tables_array);
+    if (!file_data.exists || !file_data.is_file) return NULL;
 
-        *tables_array = parse_file(path);
+    Trace *opened = trace_open(path, NULL);
+    if (opened == NULL) return NULL;
 
-        return file_basename(path);
-    }
+    trace_close(*trace);
+    *trace = opened;
 
-    return NULL;
+    return file_basename(path);
 }
 
-static bool instruction_exists(InstructionTableArray *array, uint64_t id) {
-    return array->tables != NULL && id/256 < array->qtty_tables &&
-           array->tables[id/256] != NULL &&
-           array->tables[id/256]->content[id%256].valid;
-}
-
-static void append_stage(Instruction *instruction, const Stage *stage,
-                         uint32_t source) {
-    if (instruction->qtty_stages % 10 == 0)
-        instruction->stages = realloc(instruction->stages,
-            (instruction->qtty_stages + 10) * sizeof(Stage));
-
-    Stage *copy = &instruction->stages[instruction->qtty_stages++];
-    *copy = *stage;
-    copy->source = source;
-    copy->name = stage->name ? strdup(stage->name) : NULL;
-}
-
-void attach_trace(const char *path, InstructionTableArray *tables_array,
-                  uint32_t source) {
-    InstructionTableArray attached = parse_file(path);
-
-    for (uint64_t t = 0; t < attached.qtty_tables; ++t) {
-        if (attached.tables[t] == NULL) continue;
-        for (uint64_t j = 0; j < 256; ++j) {
-            Instruction *from = &attached.tables[t]->content[j];
-            if (!from->valid) continue;
-
-            uint64_t id = t*256 + j;
-            bool existed = instruction_exists(tables_array, id);
-            Instruction *to = get_instruction(tables_array, id);
-
-            if (!existed) {
-                to->mem_addr = from->mem_addr ? strdup(from->mem_addr) : NULL;
-                to->instruction = from->instruction ? strdup(from->instruction) : NULL;
-                to->finished = from->finished;
-                to->flushed = from->flushed;
-            }
-
-            for (uint64_t k = 0; k < from->qtty_stages; ++k)
-                append_stage(to, &from->stages[k], source);
-        }
-    }
-
-    free_InstructionTableArray(&attached);
+bool attach_trace(const char *path, Trace *trace, uint32_t source) {
+    return trace != NULL && trace_attach(trace, path, source);
 }

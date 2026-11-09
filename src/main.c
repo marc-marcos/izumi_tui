@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
             FileData file_data = check_file(path);
 
             if (file_data.exists && file_data.is_file) {
-                app_data.windows[window_index]->filename = read_file(argv[i], app_data.windows[window_index]->tables_array);
+                app_data.windows[window_index]->filename = read_file(argv[i], &app_data.windows[window_index]->trace);
             }
 
             free(path);
@@ -70,20 +70,6 @@ int main(int argc, char *argv[]) {
             ++window_index;
         }
     }
-
-    /*InstructionTableArray *tables_array = app_data.windows[0]->tables_array;
-
-    for (uint64_t i = 0; i < tables_array->qtty_tables; ++i) {
-        if (tables_array->tables[i] != NULL) {
-            for (uint64_t j = 0; j < 256; ++j) {
-                if (tables_array->tables[i]->content[j].valid) {
-                    if (tables_array->tables[i]->content[j].instruction != NULL) {
-                        fprintf(stderr, "%s\n", tables_array->tables[i]->content[j].instruction);
-                    }
-                }
-            }
-        }
-        }*/
 
     main_loop(&app_data);
 

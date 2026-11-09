@@ -89,7 +89,7 @@ ErrorKind open_cb(ApplicationData *app_data, const char * argv[]) {
     }
 
     clear_lane_sources(app_data->windows[app_data->window_focused]);
-    app_data->windows[app_data->window_focused]->filename = read_file(file_name, app_data->windows[app_data->window_focused]->tables_array);
+    app_data->windows[app_data->window_focused]->filename = read_file(file_name, &app_data->windows[app_data->window_focused]->trace);
     app_data->windows[app_data->window_focused]->first_subrow = 0;
     return NO_ERROR;
 }
@@ -98,7 +98,7 @@ ErrorKind attach_cb(ApplicationData *app_data, const char * argv[]) {
     if (app_data->windows == NULL) return ERROR_NO_WINDOW;
 
     WindowData *win_data = app_data->windows[app_data->window_focused];
-    if (win_data->tables_array == NULL || win_data->tables_array->tables == NULL)
+    if (win_data->trace == NULL)
         return ERROR_NO_TRACE_OPEN;
 
     char *path = realpath(argv[0], NULL);
@@ -108,7 +108,10 @@ ErrorKind attach_cb(ApplicationData *app_data, const char * argv[]) {
 
     // Source 0 is the primary trace; each attached file receives the next ID.
     uint32_t source = win_data->lane_sources_amount + 1;
-    attach_trace(path, win_data->tables_array, source);
+    if (!attach_trace(path, win_data->trace, source)) {
+        free(path);
+        return ERROR_FILE_NOT_EXISTS;
+    }
 
     win_data->lane_sources = realloc(win_data->lane_sources,
                                      source * sizeof(char *));
@@ -240,7 +243,7 @@ ErrorKind findpc_cb(ApplicationData *app_data, const char * argv[]) {
 
     if (app_data->windows == NULL) return ERROR_NO_WINDOW;
 
-    FindResult result = find(app_data->windows[app_data->window_focused]->tables_array, pattern, PC, DOWN, app_data->windows[app_data->window_focused]->first_instruction);
+    FindResult result = trace_find(app_data->windows[app_data->window_focused]->trace, pattern, PC, DOWN, app_data->windows[app_data->window_focused]->first_instruction);
     if (!result.valid) return ERROR_NO_RESULT;
 
     app_data->windows[app_data->window_focused]->first_instruction = result.position;
@@ -264,7 +267,7 @@ ErrorKind findinst_cb(ApplicationData *app_data, const char * argv[]) {
 
     if (app_data->windows == NULL) return ERROR_NO_WINDOW;
 
-    FindResult result = find(app_data->windows[app_data->window_focused]->tables_array, pattern, INST, DOWN, app_data->windows[app_data->window_focused]->first_instruction);
+    FindResult result = trace_find(app_data->windows[app_data->window_focused]->trace, pattern, INST, DOWN, app_data->windows[app_data->window_focused]->first_instruction);
     if (!result.valid) return ERROR_NO_RESULT;
 
     app_data->windows[app_data->window_focused]->first_instruction = result.position;
@@ -290,7 +293,7 @@ ErrorKind next_cb(ApplicationData *app_data) {
 
     char *pattern = app_data->windows[app_data->window_focused]->last_search.pattern;
 
-    FindResult result = find(app_data->windows[app_data->window_focused]->tables_array, pattern, app_data->windows[app_data->window_focused]->last_search.data_kind, DOWN, app_data->windows[app_data->window_focused]->first_instruction + 1);
+    FindResult result = trace_find(app_data->windows[app_data->window_focused]->trace, pattern, app_data->windows[app_data->window_focused]->last_search.data_kind, DOWN, app_data->windows[app_data->window_focused]->first_instruction + 1);
     if (!result.valid) return ERROR_NO_RESULT;
 
     app_data->windows[app_data->window_focused]->first_instruction = result.position;
@@ -308,7 +311,7 @@ ErrorKind prev_cb(ApplicationData *app_data) {
 
     if (app_data->windows[app_data->window_focused]->first_instruction <= 0) return false;
 
-    FindResult result = find(app_data->windows[app_data->window_focused]->tables_array, pattern, app_data->windows[app_data->window_focused]->last_search.data_kind, UP, app_data->windows[app_data->window_focused]->first_instruction - 1);
+    FindResult result = trace_find(app_data->windows[app_data->window_focused]->trace, pattern, app_data->windows[app_data->window_focused]->last_search.data_kind, UP, app_data->windows[app_data->window_focused]->first_instruction - 1);
     if (!result.valid) return ERROR_NO_RESULT;
 
     app_data->windows[app_data->window_focused]->first_instruction = result.position;

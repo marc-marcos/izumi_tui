@@ -22,6 +22,7 @@
 #include <stdbool.h>
 
 #include <izumi/data_structs.h>
+#include <izumi/trace.h>
 
 struct FileData_s {
     bool exists;
@@ -39,12 +40,15 @@ typedef struct FileData_s FileData;
 FileData check_file(const char *path);
 
 /*
- * This function reads a file and stores the data in the tables array.
+ * Open a trace file lazily, replacing (and closing) *trace. Nothing is parsed
+ * yet: instructions are loaded on demand while the trace is displayed.
+ * Returns the file's basename, or NULL if the file cannot be opened, in
+ * which case *trace is left untouched.
  *
  * path: The path of the file.
- * tables_array: The array of tables.
+ * trace: The trace of the window.
  */
-char *read_file(const char *path, InstructionTableArray *tables_array);
+char *read_file(const char *path, Trace **trace);
 
 /*
  * This function returns a newly allocated copy of the file's basename.
@@ -52,16 +56,16 @@ char *read_file(const char *path, InstructionTableArray *tables_array);
 char *file_basename(const char *path);
 
 /*
- * Parse a trace and merge its stages into an existing tables array. Stages are
- * tagged with the given source index so they remain distinguishable from the
+ * Attach a trace and merge its stages into an open trace. Stages are tagged
+ * with the given source index so they remain distinguishable from the
  * primary trace even when lane IDs collide. Instructions missing from the
- * primary trace are created with the attached trace's labels.
+ * primary trace are created with the attached trace's labels. Like the
+ * primary trace, the attached file is loaded lazily.
  *
  * path: The path of the attached trace.
- * tables_array: The array of tables of the open trace.
+ * trace: The open trace.
  * source: Source index (1 for the first attached file, 2 for the next, ...).
  */
-void attach_trace(const char *path, InstructionTableArray *tables_array,
-                  uint32_t source);
+bool attach_trace(const char *path, Trace *trace, uint32_t source);
 
 #endif
